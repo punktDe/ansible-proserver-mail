@@ -1,0 +1,12 @@
+---
+- name: Define Aliases
+  lineinfile:
+    path: "{{ aliases }}"
+    regexp: "^(?:#[\\s\\t]*)?{{ item.key }}[\\s\\t]*:"
+    line: '{{ item.key }}: {{ item.value }}'
+  loop_control:
+    label: "{{ aliases }} src={{ item.key }} dest={{ item.value }}"
+  with_dict: "{{ mail.aliases }}"
+  vars:
+    aliases: /etc/mail/aliases
+  notify: Rebuild aliases.db
