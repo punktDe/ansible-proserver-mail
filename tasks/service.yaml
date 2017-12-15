@@ -1,9 +1,9 @@
 ---
-- name: "{{ 'Enable' if mail.enable else 'Disable' }} Mail Transport Agent"
+- name: "{{ 'Enable' if mail.enable_mta else 'Disable' }} Mail Transport Agent"
   lineinfile:
     path: "{{ rc_conf }}"
     regexp: "^(?:#[\\s\\t]*)?{{ item.key }}="
-    line: '{{ "#" if mail.enable else "" }}{{ item.key }}="{{ item.if_disabled }}"'
+    line: '{{ "#" if mail.enable_mta else "" }}{{ item.key }}="{{ item.if_disabled }}"'
   loop_control:
     label: "{{ rc_conf }} {{ item.key }}"
   with_items:
@@ -17,4 +17,4 @@
       if_disabled: "NO"
   vars:
     rc_conf: /etc/rc.conf
-  notify: "{{ ['Rebuild Sendmail configuration', 'Start Sendmail'] if mail.enable else 'Stop Sendmail' }}"
+  notify: "{{ ['Rebuild Sendmail configuration', 'Start Sendmail'] if mail.enable_mta else 'Stop Sendmail' }}"
