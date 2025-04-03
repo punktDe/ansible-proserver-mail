@@ -21,7 +21,7 @@
   lineinfile:
     path: "{{ rc_conf }}"
     regexp: "^(?:#[\\s\\t]*)?sendmail_enable="
-    line: "sendmail_enable={{ 'NO' if mail.enable_mta else 'NONE' }}"
+    line: "sendmail_enable={{ '\"NO\"' if mail.enable_mta else '\"NONE\"' }}"
   vars:
     rc_conf: /etc/rc.conf
   notify: "{{ ['Rebuild Sendmail configuration', 'Start Sendmail'] if mail.enable_mta else 'Stop Sendmail' }}"
