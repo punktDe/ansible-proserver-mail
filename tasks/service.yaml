@@ -1,20 +1,22 @@
 ---
-- name: "{{ 'Enable' if mail.enable_mta else 'Disable' }} Mail Transport Agent"
+- name: "Remove legacy Sendmail config parameters"
   lineinfile:
     path: "{{ rc_conf }}"
-    regexp: "^(?:#[\\s\\t]*)?{{ item.key }}="
-    line: '{{ "#" if mail.enable_mta else "" }}{{ item.key }}="{{ item.if_disabled }}"'
-  loop_control:
-    label: "{{ rc_conf }} {{ item.key }}"
+    regexp: "^(?:#[\\s\\t]*)?{{ item }}="
+    state: absent
   with_items:
-    - key: sendmail_enable
-      if_disabled: "NONE"
     - key: sendmail_submit_enable
-      if_disabled: "NO"
     - key: sendmail_outbound_enable
-      if_disabled: "NO"
     - key: sendmail_msp_queue_enable
-      if_disabled: "NO"
+  vars:
+    rc_conf: /etc/rc.conf
+  notify: "{{ ['Rebuild Sendmail configuration', 'Start Sendmail'] if mail.enable_mta else 'Stop Sendmail' }}"
+
+- name: "{{ 'Enable' if mail.enable_mta else 'Disable' }} sendmail"
+  lineinfile:
+    path: "{{ rc_conf }}"
+    regexp: "^(?:#[\\s\\t]*)?sendmail_enable="
+    line: "sendmail_enable={{ '\"NO\"' if mail.enable_mta else '\"NONE\"' }}"
   vars:
     rc_conf: /etc/rc.conf
   notify: "{{ ['Rebuild Sendmail configuration', 'Start Sendmail'] if mail.enable_mta else 'Stop Sendmail' }}"
