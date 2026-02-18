@@ -1,18 +1,18 @@
 ---
 - name: Rebuild Sendmail configuration
-  shell: make && make install
+  ansible.builtin.shell: make && make install
   args:
     chdir: /etc/mail
 
 - name: Rebuild aliases.db
-  command: newaliases
+  ansible.builtin.command: newaliases
 
 - name: Start Sendmail
-  service:
+  ansible.builtin.service:
     name: sendmail
     state: started
 
 - name: Stop Sendmail
-  service:
+  ansible.builtin.service:
     name: sendmail
     state: stopped

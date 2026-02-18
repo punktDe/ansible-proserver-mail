@@ -1,0 +1,14 @@
+---
+skip_list:
+  - meta-no-info
+  - var-naming[no-role-prefix]
+  - name[template]
+
+warn_list:
+  - no-handler
+  - package-latest
+  - risky-shell-pipe
+  - unnamed-task
+
+exclude_paths:
+  - .ansible/
