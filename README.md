@@ -37,5 +37,5 @@ Afterwards, install the role by running `ansible-galaxy install -r requirements.
 ```yaml
 - hosts: all
   roles:
-    - name: mail
+    - name: ansible-proserver-mail
 ```
