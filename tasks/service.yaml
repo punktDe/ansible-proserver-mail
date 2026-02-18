@@ -1,19 +1,19 @@
 ---
 - name: "Remove legacy Sendmail config parameters"
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: "{{ rc_conf }}"
     regexp: "^(?:#[\\s\\t]*)?{{ item }}="
     state: absent
-  with_items:
-    - key: sendmail_submit_enable
-    - key: sendmail_outbound_enable
-    - key: sendmail_msp_queue_enable
+  loop:
+    - sendmail_submit_enable
+    - sendmail_outbound_enable
+    - sendmail_msp_queue_enable
   vars:
     rc_conf: /etc/rc.conf
   notify: "{{ ['Rebuild Sendmail configuration', 'Start Sendmail'] if mail.enable_mta else 'Stop Sendmail' }}"
 
 - name: "{{ 'Enable' if mail.enable_mta else 'Disable' }} sendmail"
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: "{{ rc_conf }}"
     regexp: "^(?:#[\\s\\t]*)?sendmail_enable="
     line: "sendmail_enable={{ '\"NO\"' if mail.enable_mta else '\"NONE\"' }}"

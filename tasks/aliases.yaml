@@ -1,6 +1,6 @@
 ---
 - name: Define Aliases
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: "{{ aliases }}"
     regexp: "^(?:#[\\s\\t]*)?{{ item.key }}[\\s\\t]*:"
     line: '{{ item.key }}: {{ item.value }}'
