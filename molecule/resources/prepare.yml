@@ -1,0 +1,46 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: no
+  tasks:
+    - name: Refuse to run against anything but a throwaway machine
+      ansible.builtin.assert:
+        that:
+          - lookup('env', 'MAIL_MOLECULE_DISPOSABLE') == 'yes'
+        fail_msg: >-
+          This scenario replaces the target's MTA. Point it at a disposable
+          FreeBSD VM and set MAIL_MOLECULE_DISPOSABLE=yes to confirm.
+        quiet: true
+
+    - name: Bootstrap Python for Ansible
+      ansible.builtin.raw: env ASSUME_ALWAYS_YES=yes pkg install -y python3
+      changed_when: false
+
+    - name: Gather facts
+      ansible.builtin.setup:
+
+    - name: Only FreeBSD is supported
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['system'] == 'FreeBSD'
+        quiet: true
+
+    # The role expects OpenDKIM (and Postfix, for that MTA) preinstalled,
+    # as on Proserver images; dkimpy is only for verify.yml.
+    - name: Install OpenDKIM, Postfix and dkimpy
+      ansible.builtin.command:
+        cmd: >-
+          pkg install -y opendkim postfix
+          py{{ ansible_facts['python']['version']['major'] }}{{ ansible_facts['python']['version']['minor'] }}-dkimpy
+      environment:
+        ASSUME_ALWAYS_YES: "yes"
+      register: mail_test_pkg
+      changed_when: "'already installed' not in mail_test_pkg.stdout"
+
+    # FreeBSD only builds /etc/mail/<hostname>.cf once Sendmail is set up;
+    # the role refuses to wire a milter into Sendmail without it.
+    - name: Build this host's Sendmail config
+      ansible.builtin.command:
+        cmd: make
+        chdir: /etc/mail
+        creates: /etc/mail/{{ ansible_facts['nodename'] }}.cf

@@ -1,0 +1,29 @@
+---
+# OpenDKIM is only set up, and wired into the MTA, for configured domains.
+mail_dkim_enabled: "{{ mail.dkim.domains | length > 0 }}"
+# milter-opendkim's rc.d script always execs opendkim with "-u mailnull:mailnull",
+# overriding opendkim.conf's UserID — files it reads at runtime (keys) must
+# be readable by that user, and Postfix joins this group for the socket.
+mail_dkim_user: mailnull
+mail_rc_conf: /etc/rc.conf
+# Ownership is only applied when services are managed (i.e. not in tests
+# running as an unprivileged user without a mailnull account).
+mail_dkim_file_owner: "{{ mail_dkim_user if mail.manage_services else omit }}"
+# With DKIM, mail.dkim.on_failure wins over anything set in main_cf, so the
+# three places that decide a failed message's fate can't disagree.
+mail_postfix_main_cf: >-
+  {{ mail.postfix.main_cf | combine({'milter_default_action': mail.dkim.on_failure} if mail_dkim_enabled else {}) }}
+# Sendmail milter flag: F=T tempfails when the milter is unavailable;
+# without F= Sendmail carries on as if there were no filter.
+mail_sendmail_milter_flags: "{{ 'F=T, ' if mail.dkim.on_failure == 'tempfail' else '' }}"
+# File suffix Postfix's newaliases adds per database type.
+mail_postfix_alias_suffix:
+  hash: .db
+  btree: .db
+  lmdb: .lmdb
+  cdb: .cdb
+# Directory of a local:/unix: socket, which rc.d only creates for its own
+# default socket path.
+mail_dkim_socket_dir: >-
+  {{ (mail.dkim.socket | regex_replace('^(local|unix):', '') | dirname)
+     if mail.dkim.socket is match('^(local|unix):') else '' }}

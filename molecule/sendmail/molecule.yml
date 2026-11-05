@@ -1,0 +1,38 @@
+---
+# Same end-to-end test as the postfix scenario, with mail.mta=sendmail.
+# See ../postfix/molecule.yml for the environment variables and the
+# disposable-VM requirement.
+dependency:
+  name: galaxy
+  enabled: false
+driver:
+  name: default
+  options:
+    managed: false
+    ansible_connection_options:
+      ansible_connection: ${MAIL_MOLECULE_CONNECTION:-ssh}
+      ansible_host: ${MAIL_MOLECULE_HOST:-freebsd}
+      ansible_user: root
+      ansible_python_interpreter: /usr/local/bin/python3
+platforms:
+  - name: freebsd
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      hash_behaviour: merge
+  inventory:
+    host_vars:
+      freebsd:
+        mail_test_mta: sendmail
+  playbooks:
+    prepare: ../resources/prepare.yml
+    converge: ../resources/converge.yml
+    verify: ../resources/verify.yml
+scenario:
+  test_sequence:
+    - syntax
+    - prepare
+    - converge
+    - idempotence
+    - verify

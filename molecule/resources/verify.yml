@@ -1,0 +1,169 @@
+---
+- name: Verify
+  hosts: all
+  vars:
+    socket: /var/run/milteropendkim/milteropendkim.sock
+  tasks:
+    # set_fact pins the value; a plain var would re-roll on every use.
+    - name: Pick a unique subject for this run's test mail
+      ansible.builtin.set_fact:
+        token: "mail-molecule-{{ 999999999 | random }}"
+
+    - name: OpenDKIM is running and its socket exists
+      ansible.builtin.wait_for:
+        path: "{{ socket }}"
+        timeout: 30
+
+    - name: Postfix-specific checks
+      when: mail_test_mta == 'postfix'
+      block:
+        - name: Read Postfix milter and listener settings
+          ansible.builtin.command:
+            cmd: /usr/local/sbin/postconf -h smtpd_milters non_smtpd_milters inet_interfaces
+          register: mail_test_postconf
+          changed_when: false
+
+        - name: Postfix uses the milter and listens on loopback only
+          ansible.builtin.assert:
+            that:
+              - mail_test_postconf.stdout_lines == ['unix:' ~ socket, 'unix:' ~ socket, 'loopback-only']
+
+        - name: Read listeners on port 25
+          ansible.builtin.command:
+            cmd: sockstat -l -P tcp -p 25
+          register: mail_test_sockstat
+          changed_when: false
+
+        - name: Postfix (not Sendmail) owns port 25
+          ansible.builtin.assert:
+            that:
+              - "'master' in mail_test_sockstat.stdout"
+              - "'sendmail' not in mail_test_sockstat.stdout"
+
+        - name: Look for leftover Sendmail daemons (including the queue runner)
+          ansible.builtin.command:
+            cmd: pgrep -lx sendmail
+          register: mail_test_sendmail_procs
+          changed_when: false
+          failed_when: mail_test_sendmail_procs.rc != 1
+
+        # The role must build it; local delivery to root below depends on it.
+        - name: Postfix's alias database exists
+          ansible.builtin.stat:
+            path: /etc/aliases.db
+          register: mail_test_aliases_db
+          failed_when: not mail_test_aliases_db.stat.exists
+
+    - name: Sendmail-specific checks
+      when: mail_test_mta == 'sendmail'
+      block:
+        - name: Postfix's master process is not running
+          ansible.builtin.command:
+            cmd: pgrep -lx master
+          register: mail_test_postfix_procs
+          changed_when: false
+          failed_when: mail_test_postfix_procs.rc != 1
+
+        - name: Read listeners on port 25
+          ansible.builtin.command:
+            cmd: sockstat -l -P tcp -p 25
+          register: mail_test_sockstat
+          changed_when: false
+
+        - name: Sendmail (not Postfix) owns port 25
+          ansible.builtin.assert:
+            that:
+              - "'sendmail' in mail_test_sockstat.stdout"
+              - "'master' not in mail_test_sockstat.stdout"
+
+    - name: Submit a test mail from the signed domain
+      ansible.builtin.command:
+        cmd: /usr/sbin/sendmail -t
+        stdin: |
+          From: test@example.com
+          To: root@localhost
+          Subject: {{ token }}
+
+          hello
+      changed_when: false
+
+    - name: Wait for local delivery
+      ansible.builtin.wait_for:
+        path: /var/mail/root
+        search_regex: "Subject: {{ token }}"
+        timeout: 60
+
+    - name: Copy the DKIM checker
+      ansible.builtin.copy:
+        src: files/verify_dkim.py
+        dest: /tmp/verify_dkim.py
+        mode: "0755"
+
+    - name: Signature verifies against the reported DNS record
+      ansible.builtin.command:
+        cmd: >-
+          {{ ansible_facts['python']['executable'] }} /tmp/verify_dkim.py
+          /var/mail/root {{ token }} /tmp/mail-molecule-records active
+      changed_when: false
+
+    # Self-healing with on_failure=tempfail: while OpenDKIM is down mail
+    # must be held, not sent unsigned, and go out signed once it's back.
+    - name: Recovery after an OpenDKIM outage
+      block:
+        - name: Stop OpenDKIM
+          ansible.builtin.service:
+            name: milter-opendkim
+            state: stopped
+
+        - name: Submit a mail while OpenDKIM is down
+          ansible.builtin.command:
+            cmd: /usr/sbin/sendmail -t
+            stdin: |
+              From: test@example.com
+              To: root@localhost
+              Subject: {{ token }}-outage
+
+              hello
+          changed_when: false
+
+        - name: The mail is held back instead of being delivered unsigned
+          ansible.builtin.wait_for:
+            path: /var/mail/root
+            search_regex: "Subject: {{ token }}-outage"
+            timeout: 20
+          register: mail_test_held
+          failed_when: mail_test_held is succeeded
+
+        - name: Start OpenDKIM again
+          ansible.builtin.service:
+            name: milter-opendkim
+            state: started
+
+        # Sendmail: client queue (local submissions) first, then the MTA's.
+        - name: Retry the held mail now
+          ansible.builtin.command:
+            argv: "{{ item }}"
+          loop: >-
+            {{ [['/usr/local/sbin/postqueue', '-f']]
+               if mail_test_mta == 'postfix'
+               else [['/usr/sbin/sendmail', '-Ac', '-q'], ['/usr/sbin/sendmail', '-q']] }}
+          changed_when: false
+
+        - name: Wait for the held mail to be delivered
+          ansible.builtin.wait_for:
+            path: /var/mail/root
+            search_regex: "Subject: {{ token }}-outage"
+            # Postfix rescans its maildrop on its own about once a minute.
+            timeout: 120
+
+        - name: The held mail went out signed
+          ansible.builtin.command:
+            cmd: >-
+              {{ ansible_facts['python']['executable'] }} /tmp/verify_dkim.py
+              /var/mail/root {{ token }}-outage /tmp/mail-molecule-records active
+          changed_when: false
+      always:
+        - name: Make sure OpenDKIM is running again
+          ansible.builtin.service:
+            name: milter-opendkim
+            state: started

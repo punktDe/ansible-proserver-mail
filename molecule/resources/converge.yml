@@ -1,0 +1,28 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    mail:
+      mta: "{{ mail_test_mta }}"
+      dkim:
+        domains:
+          example.com:
+            selectors:
+              active:
+                private_key: "{{ lookup('file', playbook_dir ~ '/files/test-selector.private') }}"
+                active: yes
+              inactive:
+                private_key: "{{ lookup('file', playbook_dir ~ '/files/test-selector.private') }}"
+  roles:
+    - role: punktde.proserver_mail
+  post_tasks:
+    # verify.yml checks signatures against exactly what the role told us to
+    # publish in DNS, so a wrong record fails the test too.
+    - name: Save the DNS TXT records the role reported
+      ansible.builtin.copy:
+        content: |
+          {% for r in mail_dkim_pubkeys.results %}
+          {{ r.item.selector }}._domainkey.{{ r.item.domain }}. v=DKIM1; k=rsa; p={{ r.content }}
+          {% endfor %}
+        dest: /tmp/mail-molecule-records
+        mode: "0644"

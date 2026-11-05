@@ -1,0 +1,24 @@
+Syslog                  yes
+# Log each signature added, so signing can be confirmed from the mail log.
+SyslogSuccess           yes
+UMask                   007
+# Sign only. Signing never touches DNS (keys are local files); verifying
+# would make outgoing mail depend on DNS lookups for no benefit on a
+# send-only host.
+Mode                    s
+Canonicalization        relaxed/relaxed
+Socket                  {{ mail.dkim.socket }}
+PidFile                 /var/run/milteropendkim/milteropendkim.pid
+UserID                  {{ mail_dkim_user }}:{{ mail_dkim_user }}
+# Restart the filter process if it crashes, but give up when it keeps
+# crashing so a broken config can't turn into a fork loop.
+AutoRestart             yes
+AutoRestartRate         10/1h
+# What to do with a message OpenDKIM can't sign (e.g. unreadable key):
+# tempfail keeps it queued in the MTA and retries; accept sends it unsigned.
+On-Default              {{ mail.dkim.on_failure }}
+KeyTable                {{ mail.dkim.prefix.config }}/KeyTable
+SigningTable            refile:{{ mail.dkim.prefix.config }}/SigningTable
+MultipleSignatures      yes
+ExternalIgnoreList      refile:{{ mail.dkim.prefix.config }}/TrustedHosts
+InternalHosts           refile:{{ mail.dkim.prefix.config }}/TrustedHosts

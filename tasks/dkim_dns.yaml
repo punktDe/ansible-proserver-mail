@@ -1,0 +1,42 @@
+---
+- name: Derive DER-encoded public key for each DKIM selector
+  ansible.builtin.command:
+    cmd: >-
+      openssl rsa
+      -in {{ mail.dkim.prefix.config }}/keys/{{ item.domain }}/{{ item.selector }}.private
+      -pubout -outform DER
+      -out /tmp/dkim-pubkey-{{ item.domain }}-{{ item.selector }}.der
+  loop: "{{ mail_dkim_provisioned_selectors }}"
+  loop_control:
+    label: "{{ item.domain }}/{{ item.selector }}"
+  changed_when: false
+  # Only writes a scratch file in /tmp; needed so --check can report DNS too.
+  check_mode: false
+  no_log: true
+
+- name: Read DER-encoded public keys
+  ansible.builtin.slurp:
+    src: "/tmp/dkim-pubkey-{{ item.domain }}-{{ item.selector }}.der"
+  register: mail_dkim_pubkeys
+  loop: "{{ mail_dkim_provisioned_selectors }}"
+  loop_control:
+    label: "{{ item.domain }}/{{ item.selector }}"
+
+- name: Remove temporary DER public key files
+  ansible.builtin.file:
+    path: "/tmp/dkim-pubkey-{{ item.domain }}-{{ item.selector }}.der"
+    state: absent
+  loop: "{{ mail_dkim_provisioned_selectors }}"
+  loop_control:
+    label: "{{ item.domain }}/{{ item.selector }}"
+  changed_when: false
+  check_mode: false
+
+- name: Report required DNS TXT records
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.item.selector }}._domainkey.{{ item.item.domain }}  TXT
+      "v=DKIM1; k=rsa; p={{ item.content }}"
+  loop: "{{ mail_dkim_pubkeys.results }}"
+  loop_control:
+    label: "{{ item.item.domain }}/{{ item.item.selector }}"
