@@ -2,9 +2,9 @@
 dependencies: []
 
 galaxy_info:
-  author: "Punkt.de"
-  license: ""
-  description: "mail role for Proserver"
+  author: "punkt.de"
+  license: "MIT"
+  description: "Mail role for Proserver: Sendmail or Postfix, with optional OpenDKIM signing"
   role_name: "proserver_mail"
   namespace: "punktde"
   min_ansible_version: "2.15"

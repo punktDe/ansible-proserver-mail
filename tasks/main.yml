@@ -13,43 +13,43 @@
     quiet: true
 
 - name: Flatten DKIM domain/selector configuration
-  ansible.builtin.import_tasks: dkim_flatten.yaml
+  ansible.builtin.import_tasks: dkim_flatten.yml
   when: mail_dkim_enabled
   tags:
     - dkim_generate_keys
 
 - name: Configure DKIM keys
-  ansible.builtin.import_tasks: dkim_keys.yaml
+  ansible.builtin.import_tasks: dkim_keys.yml
   when: mail_dkim_enabled
 
 - name: Configure OpenDKIM
-  ansible.builtin.import_tasks: dkim_config.yaml
+  ansible.builtin.import_tasks: dkim_config.yml
   when: mail_dkim_enabled
 
 - name: Report required DNS records
-  ansible.builtin.import_tasks: dkim_dns.yaml
+  ansible.builtin.import_tasks: dkim_dns.yml
   when: mail_dkim_enabled
 
 # Regular tasks rather than handlers: Postfix must be gone before any
 # handler starts Sendmail on port 25.
 - name: Turn off Postfix
-  ansible.builtin.import_tasks: postfix_disable.yaml
+  ansible.builtin.import_tasks: postfix_disable.yml
   when: (mail.mta == 'sendmail' or not mail.enable_mta) and mail.manage_services
 
 - name: Enable or disable Sendmail
-  ansible.builtin.import_tasks: service.yaml
+  ansible.builtin.import_tasks: service.yml
   when: (mail.mta == 'sendmail' or not mail.enable_mta) and mail.manage_services
 
 - name: Wire OpenDKIM into Sendmail
-  ansible.builtin.import_tasks: sendmail.yaml
+  ansible.builtin.import_tasks: sendmail.yml
   when: mail.enable_mta and mail.mta == 'sendmail'
 
 # Postfix only exists as live postconf/rc.conf state, so there is nothing
 # to do for it when services aren't managed (tests).
 - name: Switch to Postfix and wire OpenDKIM into it
-  ansible.builtin.import_tasks: postfix.yaml
+  ansible.builtin.import_tasks: postfix.yml
   when: mail.enable_mta and mail.mta == 'postfix' and mail.manage_services
 
 - name: Define aliases
-  ansible.builtin.import_tasks: aliases.yaml
+  ansible.builtin.import_tasks: aliases.yml
   when: mail.manage_services

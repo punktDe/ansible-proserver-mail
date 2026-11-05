@@ -13,8 +13,12 @@
                 active: yes
               inactive:
                 private_key: "{{ lookup('file', playbook_dir ~ '/files/test-selector.private') }}"
-  roles:
-    - role: punktde.proserver_mail
+  tasks:
+    # include_role (not roles:) so ansible-lint's syntax check doesn't need
+    # the role on its roles path — same as the other punktDe roles.
+    - name: Include ansible-proserver-mail
+      ansible.builtin.include_role:
+        name: ansible-proserver-mail
   post_tasks:
     # verify.yml checks signatures against exactly what the role told us to
     # publish in DNS, so a wrong record fails the test too.

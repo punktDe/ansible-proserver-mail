@@ -4,7 +4,7 @@
     mail_dkim_selectors: []
 
 - name: Flatten each domain's selectors into mail_dkim_selectors
-  ansible.builtin.include_tasks: dkim_flatten_domain.yaml
+  ansible.builtin.include_tasks: dkim_flatten_domain.yml
   loop: "{{ mail.dkim.domains | dict2items }}"
   loop_control:
     loop_var: mail_dkim_domain_item

@@ -23,6 +23,8 @@ platforms:
   - name: freebsd
 provisioner:
   name: ansible
+  env:
+    ANSIBLE_ROLES_PATH: "../../../"
   config_options:
     defaults:
       hash_behaviour: merge

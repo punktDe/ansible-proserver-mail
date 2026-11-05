@@ -1,0 +1,129 @@
+---
+argument_specs:
+  main:
+    short_description: Mail (Sendmail or Postfix) with optional OpenDKIM signing for Proserver
+    description:
+      - Runs either Sendmail (FreeBSD base) or Postfix, manages /etc/mail/aliases,
+        and optionally signs outgoing mail with OpenDKIM.
+      - Keys, KeyTable/SigningTable and opendkim.conf are the same for both MTAs;
+        only the wiring differs.
+    options:
+      mail:
+        description: Main configuration namespace for all mail settings
+        type: dict
+        required: false
+        default: {}
+        options:
+          enable_mta:
+            description: >-
+              Enables mail delivery. `false` turns it off entirely
+              (sendmail_enable="NONE", Postfix stopped); `dkim.domains` must
+              then be empty.
+            type: bool
+            default: true
+          mta:
+            description: >-
+              MTA to run. The role always makes that MTA the active one and
+              stops the other. Postfix needs the postfix package to be
+              installed.
+            type: str
+            choices:
+              - sendmail
+              - postfix
+            default: sendmail
+          aliases:
+            description: Entries for /etc/mail/aliases, used by both MTAs.
+            type: dict
+            default: {}
+          manage_services:
+            description: >-
+              Testing only. `false` writes OpenDKIM's files and the Sendmail
+              .mc under the configured paths but touches no services, rc.conf,
+              aliases or other system files, and skips the Postfix side
+              entirely. Never set it to `false` on a real host.
+            type: bool
+            default: true
+          sendmail:
+            description: Sendmail settings
+            type: dict
+            default: {}
+            options:
+              mc_file:
+                description: Sendmail .mc file the DKIM milter line is added to.
+                type: str
+                default: "/etc/mail/<hostname>.mc"
+              cf_file:
+                description: Compiled Sendmail config that must exist before the DKIM milter is wired in.
+                type: str
+                default: "/etc/mail/<hostname>.cf"
+          postfix:
+            description: Postfix settings
+            type: dict
+            default: {}
+            options:
+              main_cf:
+                description: >-
+                  Additional main.cf parameters applied with postconf. With
+                  DKIM, milter_default_action is always taken from
+                  `dkim.on_failure`.
+                type: dict
+                default:
+                  inet_interfaces: loopback-only
+          dkim:
+            description: >-
+              OpenDKIM signing, wired into whichever MTA `mta` selects. Only set
+              up when `domains` is non-empty; emptying it unwires the milter
+              again.
+            type: dict
+            default: {}
+            options:
+              domains:
+                description: >-
+                  Domains and their selectors; see "DKIM domains and selectors"
+                  below.
+                type: dict
+                default: {}
+              on_failure:
+                description: >-
+                  What happens to outgoing mail that can't be signed (OpenDKIM
+                  down, unreachable, or failing). `tempfail` keeps it queued in
+                  the MTA and retries; `accept` sends it unsigned. Applied to
+                  OpenDKIM (On-Default), Postfix (milter_default_action) and
+                  Sendmail (F=T) alike.
+                type: str
+                choices:
+                  - tempfail
+                  - accept
+                default: tempfail
+              prefix:
+                description: Paths
+                type: dict
+                default: {}
+                options:
+                  config:
+                    description: >-
+                      Directory holding opendkim.conf, KeyTable, SigningTable,
+                      TrustedHosts and keys/. Also written to
+                      milteropendkim_cfgfile in rc.conf.
+                    type: str
+                    default: /usr/local/etc/mail
+              socket:
+                description: >-
+                  OpenDKIM milter socket (local:/path or inet:port@host). Used
+                  for opendkim.conf, the Sendmail INPUT_MAIL_FILTER line and,
+                  translated to Postfix syntax, smtpd_milters/non_smtpd_milters.
+                type: str
+                default: "local:/var/run/milteropendkim/milteropendkim.sock"
+              trusted_hosts:
+                description: Hosts/networks allowed to relay signed mail without verification (TrustedHosts).
+                type: list
+                elements: str
+                default:
+                  - 127.0.0.1
+                  - localhost
+              key_size:
+                description: >-
+                  Default RSA key size for generated keys (per-selector
+                  `key_size` overrides it).
+                type: int
+                default: 2048

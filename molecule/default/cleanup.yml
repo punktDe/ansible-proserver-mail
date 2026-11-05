@@ -1,9 +1,0 @@
----
-- name: Cleanup
-  hosts: all
-  gather_facts: no
-  tasks:
-    - name: Remove test working directory
-      ansible.builtin.file:
-        path: /tmp/mail-molecule
-        state: absent

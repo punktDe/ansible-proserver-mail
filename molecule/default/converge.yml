@@ -24,8 +24,6 @@
               pending:
                 autogenerate: true
                 active: yes
-  # Here rather than in prepare.yml: Molecule only runs prepare once per
-  # instance, but cleanup.yml wipes this directory after every test.
   pre_tasks:
     - name: Ensure test working directory exists
       ansible.builtin.file:
@@ -39,5 +37,9 @@
         dest: /tmp/mail-molecule/freebsd.cf
         force: no
         mode: "0644"
-  roles:
-    - role: punktde.proserver_mail
+  tasks:
+    # include_role (not roles:) so ansible-lint's syntax check doesn't need
+    # the role on its roles path — same as the other punktDe roles.
+    - name: Include ansible-proserver-mail
+      ansible.builtin.include_role:
+        name: ansible-proserver-mail

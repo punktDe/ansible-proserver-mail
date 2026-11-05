@@ -1,0 +1,10 @@
+---
+name: CI
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  ansible-role:
+    uses: punktDe/shared-workflows/.github/workflows/ansible-role.yml@main
+    secrets:
+      galaxy_api_key: ${{ secrets.ANSIBLE_GALAXY_API_KEY }}

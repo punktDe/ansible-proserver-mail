@@ -1,34 +1,43 @@
 ---
-# Render-only scenario: runs on the controller itself (macOS or Linux, no
-# FreeBSD needed) with services unmanaged, and checks the generated OpenDKIM
-# files and Sendmail wiring. The sendmail/postfix scenarios cover the real
-# MTA on a FreeBSD VM.
+# Runs the role in test mode (mail.manage_services: no) on the standard
+# platforms: renders OpenDKIM's files and the Sendmail .mc under /tmp and
+# checks them; no services or system files are touched. The postfix and
+# sendmail scenarios cover a real FreeBSD host.
 dependency:
   name: galaxy
-  enabled: false
 driver:
-  name: default
-  options:
-    managed: false
-    ansible_connection_options:
-      ansible_connection: local
+  name: docker
 platforms:
-  - name: localhost
+  - name: ubuntu-2204
+    image: geerlingguy/docker-ubuntu2204-ansible
+    <<: &default_platform
+      command: /lib/systemd/systemd
+      pre_build_image: true
+      privileged: true
+      cgroupns_mode: host
+      volumes:
+        - /sys/fs/cgroup:/sys/fs/cgroup:rw
+  - name: ubuntu-2404
+    image: geerlingguy/docker-ubuntu2404-ansible
+    <<: *default_platform
+  - name: ubuntu-2604
+    image: geerlingguy/docker-ubuntu2604-ansible
+    <<: *default_platform
+  - name: debian-12
+    image: geerlingguy/docker-debian12-ansible
+    <<: *default_platform
+  - name: debian-13
+    image: geerlingguy/docker-debian13-ansible
+    <<: *default_platform
 provisioner:
   name: ansible
+  env:
+    ANSIBLE_ROLES_PATH: "../../../"
   config_options:
     defaults:
       # The role relies on mail.* defaults merging with the play's mail dict.
       hash_behaviour: merge
-  inventory:
-    host_vars:
-      localhost:
-        ansible_python_interpreter: "{{ ansible_playbook_python }}"
-scenario:
-  test_sequence:
-    - cleanup
-    - syntax
-    - converge
-    - idempotence
-    - verify
-    - cleanup
+  playbooks:
+    converge: ${MOLECULE_PLAYBOOK:-converge.yml}
+verifier:
+  name: ansible

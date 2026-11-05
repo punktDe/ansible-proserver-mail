@@ -1,0 +1,9 @@
+---
+- name: Prepare
+  hosts: all
+  tasks:
+    # The role derives each selector's DNS record with openssl.
+    - name: Install openssl
+      ansible.builtin.apt:
+        name: openssl
+        update_cache: true
