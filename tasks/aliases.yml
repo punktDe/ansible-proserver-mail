@@ -1,4 +1,6 @@
 ---
+# /etc/mail/aliases is the alias source for both MTAs (/etc/aliases links
+# to it); newaliases runs whichever one mailer.conf points at.
 - name: Define Aliases
   ansible.builtin.lineinfile:
     path: "{{ aliases }}"

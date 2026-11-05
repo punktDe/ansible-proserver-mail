@@ -1,0 +1,172 @@
+---
+- name: Check that Postfix is installed on this host
+  ansible.builtin.stat:
+    path: /usr/local/sbin/postfix
+  register: mail_postfix_bin
+
+- name: Fail if Postfix isn't installed on this host
+  ansible.builtin.fail:
+    msg: >-
+      /usr/local/sbin/postfix does not exist, so Postfix does not appear to
+      be installed on this host. Install the postfix package first, or set
+      mail.mta to "sendmail".
+  when: not mail_postfix_bin.stat.exists
+
+# Postfix can't share port 25 with Sendmail — "NONE" (unlike "NO") also
+# stops FreeBSD from running Sendmail's localhost-only daemon.
+- name: Disable Sendmail entirely
+  ansible.builtin.lineinfile:
+    path: "{{ mail_rc_conf }}"
+    regexp: "^(?:#[\\s\\t]*)?sendmail_enable="
+    line: 'sendmail_enable="NONE"'
+    create: yes
+    mode: "0644"
+  notify: Restart Postfix
+
+# Runs every time (not as a handler) so a Sendmail started by hand or left
+# over from an earlier run is caught too. rc.d/sendmail skips its client
+# queue runner entirely once sendmail_enable="NONE", so "service sendmail
+# stop" can't reach it — signal each daemon via its pidfile instead. The
+# "-x sendmail" match guards against a stale pidfile naming a reused PID.
+- name: Find Sendmail daemon pidfiles
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - /var/run/sendmail.pid
+    - /var/spool/clientmqueue/sm-client.pid
+  register: mail_sendmail_pidfiles
+
+- name: Stop any Sendmail daemons still running
+  ansible.builtin.command:
+    cmd: pkill -F {{ item.stat.path }} -x sendmail
+  loop: "{{ mail_sendmail_pidfiles.results | selectattr('stat.exists') | list }}"
+  loop_control:
+    label: "{{ item.stat.path }}"
+  register: mail_sendmail_kill
+  # pkill: 0 = signalled a daemon, 1 = stale pidfile, nothing running
+  changed_when: mail_sendmail_kill.rc == 0
+  failed_when: mail_sendmail_kill.rc not in [0, 1]
+
+- name: Enable Postfix service
+  ansible.builtin.lineinfile:
+    path: "{{ mail_rc_conf }}"
+    regexp: "^(?:#[\\s\\t]*)?postfix_enable="
+    line: 'postfix_enable="YES"'
+    create: yes
+    mode: "0644"
+  notify: Restart Postfix
+
+- name: Point mailer.conf at Postfix
+  ansible.builtin.copy:
+    src: /usr/local/share/postfix/mailer.conf.postfix
+    dest: /etc/mail/mailer.conf
+    remote_src: yes
+    owner: root
+    group: wheel
+    mode: "0644"
+
+# Postfix keeps its own alias database next to its alias_database source
+# (hash:/etc/aliases -> /etc/aliases.db; /etc/aliases links to
+# /etc/mail/aliases, which aliases.yml edits). Sendmail's
+# /etc/mail/aliases.db is not used. Without it every local delivery — e.g.
+# root's periodic reports — is deferred with "alias database unavailable".
+- name: Look up Postfix's alias database
+  ansible.builtin.command:
+    cmd: /usr/local/sbin/postconf -hx alias_database
+  register: mail_postfix_alias_database
+  changed_when: false
+  check_mode: false
+
+- name: Check the alias source and Postfix's alias database
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ mail_postfix_alias_source }}"
+    - "{{ mail_postfix_alias_source }}{{ mail_postfix_alias_suffix[mail_postfix_alias_type] | default('.db') }}"
+  register: mail_postfix_alias_files
+  vars:
+    mail_postfix_alias_type: "{{ mail_postfix_alias_database.stdout.split(':', 1)[0] }}"
+    mail_postfix_alias_source: "{{ mail_postfix_alias_database.stdout.split(':', 1)[1] }}"
+
+- name: Build Postfix's alias database
+  ansible.builtin.command:
+    cmd: /usr/local/bin/newaliases
+  when: >-
+    not mail_postfix_alias_files.results[1].stat.exists
+    or mail_postfix_alias_files.results[1].stat.mtime < mail_postfix_alias_files.results[0].stat.mtime
+  changed_when: true
+  # Mail deferred for lack of aliases is only retried on Postfix's backoff
+  # schedule; deliver it right away.
+  notify: Flush the Postfix queue
+
+- name: Disable Sendmail-specific periodic jobs
+  ansible.builtin.lineinfile:
+    path: /etc/periodic.conf
+    regexp: "^(?:#[\\s\\t]*)?{{ item }}="
+    line: '{{ item }}="NO"'
+    create: yes
+    mode: "0644"
+  loop:
+    - daily_clean_hoststat_enable
+    - daily_status_mail_rejects_enable
+    - daily_status_include_submit_mailq
+    - daily_submit_queuerun
+
+# The milter socket is created mode 0770 (UMask 007 in opendkim.conf) and
+# owned by mailnull, so Postfix needs that group to talk to it.
+- name: Allow Postfix to access the OpenDKIM milter socket
+  ansible.builtin.user:
+    name: postfix
+    groups: "{{ mail_dkim_user }}"
+    append: yes
+  notify: Restart Postfix
+  when: mail_dkim_enabled
+
+- name: Read current Postfix main.cf parameters
+  ansible.builtin.command:
+    cmd: /usr/local/sbin/postconf {{ mail_postfix_main_cf.keys() | join(' ') }}
+  register: mail_postfix_main_cf_current
+  changed_when: false
+  check_mode: false
+
+- name: Apply Postfix main.cf parameters
+  ansible.builtin.command:
+    cmd: /usr/local/sbin/postconf -e "{{ item.key }} = {{ item.value }}"
+  loop: "{{ mail_postfix_main_cf | dict2items }}"
+  loop_control:
+    label: "{{ item.key }} = {{ item.value }}"
+  when: (item.key ~ ' = ' ~ item.value) not in mail_postfix_main_cf_current.stdout_lines
+  notify: Restart Postfix
+  changed_when: true
+
+- name: Read current Postfix milter lists
+  ansible.builtin.command:
+    cmd: /usr/local/sbin/postconf -h {{ item }}
+  loop:
+    - smtpd_milters
+    - non_smtpd_milters
+  register: mail_postfix_milters
+  changed_when: false
+  check_mode: false
+
+# Postfix and OpenDKIM spell socket addresses differently:
+#   local:/path -> unix:/path,  inet:port@host -> inet:host:port
+# Removed again when DKIM is turned off: with milter_default_action=tempfail
+# a milter left behind would hold back all mail.
+- name: Add or remove the OpenDKIM milter in Postfix
+  ansible.builtin.command:
+    cmd: /usr/local/sbin/postconf -e "{{ item.item }} = {{ mail_postfix_wanted | join(', ') }}"
+  loop: "{{ mail_postfix_milters.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: mail_postfix_wanted != mail_postfix_current
+  vars:
+    # postconf lists may be separated by commas and/or whitespace
+    mail_postfix_current: "{{ (item.stdout | default('') | replace(',', ' ')).split() }}"
+    mail_postfix_milter: >-
+      {{ mail.dkim.socket | regex_replace('^local:', 'unix:') | regex_replace('^inet:(\\d+)@(.+)$', 'inet:\\2:\\1') }}
+    mail_postfix_wanted: >-
+      {{ (mail_postfix_current | reject('eq', mail_postfix_milter) | list)
+         + ([mail_postfix_milter] if mail_dkim_enabled else []) }}
+  notify: Restart Postfix
+  changed_when: true

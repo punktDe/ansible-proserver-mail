@@ -1,0 +1,29 @@
+---
+- name: Check that a compiled Sendmail config exists for this host
+  ansible.builtin.stat:
+    path: "{{ mail.sendmail.cf_file }}"
+  register: mail_sendmail_cf
+  when: mail_dkim_enabled
+
+- name: Fail if Sendmail hasn't been set up on this host
+  ansible.builtin.fail:
+    msg: >-
+      {{ mail.sendmail.cf_file }} does not exist, so Sendmail does not
+      appear to be configured on this host yet — wiring in the DKIM milter
+      would silently do nothing.
+  when: mail_dkim_enabled and not mail_sendmail_cf.stat.exists
+
+# Removed again when DKIM is turned off, so Sendmail never waits on a
+# milter that isn't configured.
+- name: Add or remove the OpenDKIM milter in the Sendmail .mc file
+  ansible.builtin.lineinfile:
+    path: "{{ mail.sendmail.mc_file }}"
+    regexp: "^INPUT_MAIL_FILTER\\(`opendkim'"
+    line: "INPUT_MAIL_FILTER(`opendkim', `S={{ mail.dkim.socket }}, {{ mail_sendmail_milter_flags }}T=S:30s;R:30s')dnl"
+    state: "{{ 'present' if mail_dkim_enabled else 'absent' }}"
+    insertafter: EOF
+    create: "{{ mail_dkim_enabled }}"
+    mode: "0644"
+  notify:
+    - Rebuild Sendmail configuration
+    - Restart Sendmail

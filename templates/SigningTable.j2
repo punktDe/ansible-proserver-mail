@@ -1,0 +1,3 @@
+{% for item in mail_dkim_active_selectors %}
+*@{{ item.domain }} {{ item.selector }}._domainkey.{{ item.domain }}
+{% endfor %}

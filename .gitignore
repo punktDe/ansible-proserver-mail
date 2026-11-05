@@ -1,0 +1,16 @@
+.DS_Store
+*.pyc
+__pycache__
+.idea
+.vscode
+/*.retry
+/.fact_cache
+/venv/
+debug.log
+id_ed25519*
+/venv*/
+.collections
+roles
+.roles
+.venv
+.ansible

@@ -1,0 +1,52 @@
+---
+# Handlers run in the order defined here, not the order notified.
+
+- name: Rebuild aliases.db
+  ansible.builtin.command: newaliases
+  changed_when: true
+  when: mail.manage_services
+
+- name: Restart milteropendkim
+  ansible.builtin.service:
+    name: milter-opendkim
+    state: restarted
+  when: mail.manage_services
+
+# Before Start/Restart Sendmail.
+- name: Rebuild Sendmail configuration
+  ansible.builtin.shell: make && make install
+  args:
+    chdir: /etc/mail
+  changed_when: true
+  when: mail.manage_services
+
+- name: Start Sendmail
+  ansible.builtin.service:
+    name: sendmail
+    state: started
+  when: mail.manage_services
+
+- name: Restart Sendmail
+  ansible.builtin.service:
+    name: sendmail
+    state: restarted
+  when: mail.manage_services
+
+- name: Stop Sendmail
+  ansible.builtin.service:
+    name: sendmail
+    state: stopped
+  when: mail.manage_services
+
+- name: Restart Postfix
+  ansible.builtin.service:
+    name: postfix
+    state: restarted
+  when: mail.manage_services
+
+# After "Restart Postfix".
+- name: Flush the Postfix queue
+  ansible.builtin.command:
+    cmd: /usr/local/sbin/postqueue -f
+  changed_when: true
+  when: mail.manage_services

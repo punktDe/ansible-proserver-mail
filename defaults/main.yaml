@@ -1,4 +1,0 @@
----
-mail:
-  enable_mta: yes
-  aliases: {}

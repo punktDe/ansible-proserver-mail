@@ -1,0 +1,74 @@
+---
+- name: Ensure OpenDKIM config directory exists
+  ansible.builtin.file:
+    path: "{{ mail.dkim.prefix.config }}"
+    state: directory
+    owner: "{{ mail_dkim_file_owner }}"
+    group: "{{ mail_dkim_file_owner }}"
+    mode: "0750"
+
+- name: Template opendkim.conf
+  ansible.builtin.template:
+    src: opendkim.conf.j2
+    dest: "{{ mail.dkim.prefix.config }}/opendkim.conf"
+    owner: "{{ mail_dkim_file_owner }}"
+    group: "{{ mail_dkim_file_owner }}"
+    mode: "0640"
+  notify: Restart milteropendkim
+
+- name: Template KeyTable
+  ansible.builtin.template:
+    src: KeyTable.j2
+    dest: "{{ mail.dkim.prefix.config }}/KeyTable"
+    owner: "{{ mail_dkim_file_owner }}"
+    group: "{{ mail_dkim_file_owner }}"
+    mode: "0640"
+  notify: Restart milteropendkim
+
+- name: Template SigningTable
+  ansible.builtin.template:
+    src: SigningTable.j2
+    dest: "{{ mail.dkim.prefix.config }}/SigningTable"
+    owner: "{{ mail_dkim_file_owner }}"
+    group: "{{ mail_dkim_file_owner }}"
+    mode: "0640"
+  notify: Restart milteropendkim
+
+- name: Template TrustedHosts
+  ansible.builtin.template:
+    src: TrustedHosts.j2
+    dest: "{{ mail.dkim.prefix.config }}/TrustedHosts"
+    owner: "{{ mail_dkim_file_owner }}"
+    group: "{{ mail_dkim_file_owner }}"
+    mode: "0640"
+  notify: Restart milteropendkim
+
+# milteropendkim_cfgfile makes a non-default mail.dkim.prefix.config actually
+# take effect — rc.d otherwise always reads /usr/local/etc/mail/opendkim.conf.
+- name: Enable milteropendkim service
+  ansible.builtin.lineinfile:
+    path: "{{ mail_rc_conf }}"
+    regexp: "^(?:#[\\s\\t]*)?{{ item.key }}="
+    line: '{{ item.key }}="{{ item.value }}"'
+    create: yes
+    mode: "0644"
+  loop:
+    - key: milteropendkim_enable
+      value: "YES"
+    - key: milteropendkim_cfgfile
+      value: "{{ mail.dkim.prefix.config }}/opendkim.conf"
+  loop_control:
+    label: "{{ item.key }}"
+  notify: Restart milteropendkim
+  when: mail.manage_services
+
+# /var/run/milteropendkim holds the PidFile; a local socket may live elsewhere.
+- name: Ensure OpenDKIM runtime directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ mail_dkim_user }}"
+    group: "{{ mail_dkim_user }}"
+    mode: "0755"
+  loop: "{{ ['/var/run/milteropendkim', mail_dkim_socket_dir] | select | unique }}"
+  when: mail.manage_services

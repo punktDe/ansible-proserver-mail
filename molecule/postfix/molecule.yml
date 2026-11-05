@@ -1,0 +1,45 @@
+---
+# End-to-end on a real FreeBSD machine: installs OpenDKIM + Postfix, applies
+# the role with mail.mta=postfix, sends a mail and verifies its signature
+# against the role's reported DNS record (no real DNS needed).
+#
+# DESTRUCTIVE to the target — it replaces the MTA. Only run against a
+# throwaway VM, and set MAIL_MOLECULE_DISPOSABLE=yes to confirm.
+#   MAIL_MOLECULE_HOST      target (default: freebsd, e.g. an ssh config alias)
+#   MAIL_MOLECULE_CONNECTION ssh (default) or local when run inside the VM
+dependency:
+  name: galaxy
+  enabled: false
+driver:
+  name: default
+  options:
+    managed: false
+    ansible_connection_options:
+      ansible_connection: ${MAIL_MOLECULE_CONNECTION:-ssh}
+      ansible_host: ${MAIL_MOLECULE_HOST:-freebsd}
+      ansible_user: root
+      ansible_python_interpreter: /usr/local/bin/python3
+platforms:
+  - name: freebsd
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_ROLES_PATH: "../../../"
+  config_options:
+    defaults:
+      hash_behaviour: merge
+  inventory:
+    host_vars:
+      freebsd:
+        mail_test_mta: postfix
+  playbooks:
+    prepare: ../resources/prepare.yml
+    converge: ../resources/converge.yml
+    verify: ../resources/verify.yml
+scenario:
+  test_sequence:
+    - syntax
+    - prepare
+    - converge
+    - idempotence
+    - verify

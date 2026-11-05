@@ -1,0 +1,45 @@
+---
+- name: Converge
+  hosts: all
+  gather_facts: no
+  vars:
+    mail:
+      manage_services: no
+      sendmail:
+        mc_file: /tmp/mail-molecule/freebsd.mc
+        cf_file: /tmp/mail-molecule/freebsd.cf
+      dkim:
+        prefix:
+          config: /tmp/mail-molecule/opendkim
+        domains:
+          example.com:
+            selectors:
+              active:
+                private_key: "{{ lookup('file', playbook_dir ~ '/../resources/files/test-selector.private') }}"
+                active: yes
+              inactive:
+                private_key: "{{ lookup('file', playbook_dir ~ '/../resources/files/test-selector.private') }}"
+              # No key file is ever generated here (that needs
+              # --tags dkim_generate_keys), so it must stay out of every table.
+              pending:
+                autogenerate: true
+                active: yes
+  pre_tasks:
+    - name: Ensure test working directory exists
+      ansible.builtin.file:
+        path: /tmp/mail-molecule
+        state: directory
+        mode: "0755"
+
+    - name: Fake a compiled Sendmail config so the setup check passes
+      ansible.builtin.copy:
+        content: ""
+        dest: /tmp/mail-molecule/freebsd.cf
+        force: no
+        mode: "0644"
+  tasks:
+    # include_role (not roles:) so ansible-lint's syntax check doesn't need
+    # the role on its roles path — same as the other punktDe roles.
+    - name: Include ansible-proserver-mail
+      ansible.builtin.include_role:
+        name: ansible-proserver-mail

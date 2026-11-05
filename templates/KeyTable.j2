@@ -1,0 +1,3 @@
+{% for item in mail_dkim_provisioned_selectors %}
+{{ item.selector }}._domainkey.{{ item.domain }} {{ item.domain }}:{{ item.selector }}:{{ mail.dkim.prefix.config }}/keys/{{ item.domain }}/{{ item.selector }}.private
+{% endfor %}

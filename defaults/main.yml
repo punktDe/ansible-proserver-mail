@@ -1,0 +1,49 @@
+---
+mail:
+  # "no" turns mail delivery off entirely (Sendmail "NONE", Postfix
+  # stopped); mail.dkim.domains must then be empty.
+  enable_mta: yes
+  # Which MTA runs: "sendmail" (FreeBSD base) or "postfix" (package must be
+  # installed). The role always makes that MTA the active one and stops the
+  # other.
+  mta: sendmail
+  aliases: {}
+  # Testing only: "no" writes OpenDKIM's files (and the Sendmail .mc) under
+  # the configured paths but leaves services, rc.conf, aliases and other
+  # system files alone — the Postfix side, which only exists as live
+  # postconf state, is skipped entirely. Never set this to "no" on a real
+  # host.
+  manage_services: yes
+  sendmail:
+    mc_file: /etc/mail/{{ ansible_facts['nodename'] }}.mc
+    # Compiled config whose presence proves Sendmail has been set up.
+    cf_file: /etc/mail/{{ ansible_facts['nodename'] }}.cf
+  postfix:
+    # Extra main.cf parameters applied via postconf. With DKIM enabled,
+    # milter_default_action is always set from mail.dkim.on_failure.
+    main_cf:
+      # Sendmail with sendmail_enable="NO" only listens on localhost — keep
+      # Postfix the same unless deliberately opened up.
+      inet_interfaces: loopback-only
+  # OpenDKIM signing, wired into whichever MTA mail.mta selects. Only set
+  # up when at least one domain is configured.
+  dkim:
+    domains: {}
+    # What happens to outgoing mail when it can't be signed — OpenDKIM
+    # down, unreachable, or failing internally (e.g. unreadable key):
+    #   tempfail  the MTA keeps the mail queued and retries; it goes out
+    #             signed once OpenDKIM works again (bounces after the
+    #             MTA's queue lifetime, 5 days by default)
+    #   accept    the mail is sent unsigned right away
+    # Applied consistently to OpenDKIM, Postfix and Sendmail.
+    on_failure: tempfail
+    prefix:
+      config: /usr/local/etc/mail
+    socket: "local:/var/run/milteropendkim/milteropendkim.sock"
+    trusted_hosts:
+      - 127.0.0.1
+      - localhost
+    # Default RSA key size for selectors with "autogenerate: true". Actual
+    # generation only happens when explicitly requested via
+    # `--tags dkim_generate_keys` — see roles/mail/README.md.
+    key_size: 2048

@@ -1,0 +1,73 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: no
+  vars:
+    config: /tmp/mail-molecule/opendkim
+  tasks:
+    - name: Read generated files
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      register: generated
+      loop:
+        - "{{ config }}/KeyTable"
+        - "{{ config }}/SigningTable"
+        - "{{ config }}/opendkim.conf"
+        - /tmp/mail-molecule/freebsd.mc
+
+    - name: Index file contents by path
+      ansible.builtin.set_fact:
+        files: "{{ dict(generated.results | map(attribute='item') | zip(generated.results | map(attribute='content') | map('b64decode'))) }}"
+
+    - name: KeyTable lists every provisioned selector, but not the pending one
+      ansible.builtin.assert:
+        that:
+          - files[config ~ '/KeyTable'].splitlines() | length == 2
+          - >-
+            'active._domainkey.example.com example.com:active:' ~ config ~ '/keys/example.com/active.private'
+            in files[config ~ '/KeyTable']
+          - >-
+            'inactive._domainkey.example.com example.com:inactive:' ~ config ~ '/keys/example.com/inactive.private'
+            in files[config ~ '/KeyTable']
+          - "'pending' not in files[config ~ '/KeyTable']"
+
+    - name: SigningTable only signs with the active, provisioned selector
+      ansible.builtin.assert:
+        that:
+          - files[config ~ '/SigningTable'].splitlines() == ['*@example.com active._domainkey.example.com']
+
+    - name: OpenDKIM config points at the generated tables and socket
+      ansible.builtin.assert:
+        that:
+          - "'KeyTable                ' ~ config ~ '/KeyTable' in files[config ~ '/opendkim.conf']"
+          - "'Socket                  local:/var/run/milteropendkim/milteropendkim.sock' in files[config ~ '/opendkim.conf']"
+
+    - name: OpenDKIM only signs, restarts itself and holds mail it can't sign
+      ansible.builtin.assert:
+        that:
+          - "'Mode                    s\n' in files[config ~ '/opendkim.conf']"
+          - "'AutoRestart             yes' in files[config ~ '/opendkim.conf']"
+          - "'On-Default              tempfail' in files[config ~ '/opendkim.conf']"
+
+    - name: Sendmail .mc has the milter line exactly once, tempfailing when it's down
+      ansible.builtin.assert:
+        that:
+          - >-
+            files['/tmp/mail-molecule/freebsd.mc'].splitlines()
+            == ["INPUT_MAIL_FILTER(`opendkim', `S=local:/var/run/milteropendkim/milteropendkim.sock, F=T, T=S:30s;R:30s')dnl"]
+
+    - name: Stat private key files
+      ansible.builtin.stat:
+        path: "{{ config }}/keys/example.com/{{ item }}.private"
+      register: keys
+      loop:
+        - active
+        - inactive
+        - pending
+
+    - name: Supplied keys are written 0600 and no key is generated without the tag
+      ansible.builtin.assert:
+        that:
+          - keys.results[0].stat.exists and keys.results[0].stat.mode == '0600'
+          - keys.results[1].stat.exists and keys.results[1].stat.mode == '0600'
+          - not keys.results[2].stat.exists

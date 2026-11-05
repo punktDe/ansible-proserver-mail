@@ -1,0 +1,22 @@
+---
+# active defaults to false for every selector — a key (supplied or
+# generated) must never sign mail until its DNS record is confirmed
+# published, and that can only be known by an explicit opt-in.
+- name: Append this domain's selector to mail_dkim_selectors
+  ansible.builtin.set_fact:
+    mail_dkim_selectors: >-
+      {{
+        mail_dkim_selectors + [
+          {
+            'domain': mail_dkim_domain_item.key,
+            'selector': item.key,
+            'private_key': item.value.private_key | default(none),
+            'active': item.value.active | default(false),
+            'autogenerate': item.value.autogenerate | default(false),
+            'key_size': item.value.key_size | default(mail.dkim.key_size)
+          }
+        ]
+      }}
+  loop: "{{ mail_dkim_domain_item.value.selectors | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
