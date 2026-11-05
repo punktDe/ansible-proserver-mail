@@ -1,0 +1,2 @@
+# Molecule/ansible-compat cache (links the role into .ansible/roles)
+.ansible/
